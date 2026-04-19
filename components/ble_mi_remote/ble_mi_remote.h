@@ -183,6 +183,8 @@ class BLEMiRemote : public Component, public esp32_ble::GAPEventHandler {
   State state_{State::IDLE};
   uint32_t last_retry_{0};
   uint8_t services_created_{0};
+  bool callback_registered_{false};
+  bool app_register_pending_{false};
 
   esp_gatt_if_t gatts_if_{ESP_GATT_IF_NONE};
   uint16_t conn_id_{0xFFFF};

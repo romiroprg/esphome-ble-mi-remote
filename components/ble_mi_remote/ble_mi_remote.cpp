@@ -371,10 +371,8 @@ void BLEMiRemote::setup() {
     DIS_ATTR_DB[IDX_DIS_CHAR_MFNAME_VAL].att_desc.length = strlen(mfname_buf);
     DIS_ATTR_DB[IDX_DIS_CHAR_MFNAME_VAL].att_desc.max_length = strlen(mfname_buf);
 
-    // Set BLE device name
-    esp_ble_gap_set_device_name(device_name_.c_str());
-
-    // Register as GAP event listener via ESPHome dispatcher
+    // Register as GAP event listener via ESPHome dispatcher.
+    // Device name is set later in try_init_() once the Bluedroid stack is up.
     esp32_ble::global_esp32_ble->add_gap_event_handler(this);
 
     ESP_LOGI(TAG, "Setup done. GATTS init will follow in loop().");
@@ -417,16 +415,31 @@ void BLEMiRemote::register_button_(MiRemoteButton *b, uint8_t type) {
 }
 
 bool BLEMiRemote::try_init_() {
-    esp_err_t ret = esp_ble_gatts_register_callback(gatts_cb_static_);
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "gatts_register_callback failed (%s), will retry", esp_err_to_name(ret));
-        return false;
+    // Register GATTS callback once. Safe to skip on retry.
+    if (!callback_registered_) {
+        esp_err_t ret = esp_ble_gatts_register_callback(gatts_cb_static_);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "gatts_register_callback failed (%s), will retry",
+                     esp_err_to_name(ret));
+            return false;
+        }
+        callback_registered_ = true;
     }
 
-    ret = esp_ble_gatts_app_register(0x5A);  // arbitrary app_id
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "gatts_app_register failed (%s), will retry", esp_err_to_name(ret));
-        return false;
+    // Now that Bluedroid has accepted a GATTS callback, the stack is up:
+    // set the device name here (not in setup(), where it would be too early).
+    esp_ble_gap_set_device_name(device_name_.c_str());
+
+    // Register our app id only once. If REG_EVT later reports failure we
+    // reset the pending flag so a retry is possible.
+    if (!app_register_pending_ && gatts_if_ == ESP_GATT_IF_NONE) {
+        esp_err_t ret = esp_ble_gatts_app_register(0x5A);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "gatts_app_register failed (%s), will retry",
+                     esp_err_to_name(ret));
+            return false;
+        }
+        app_register_pending_ = true;
     }
 
     ESP_LOGI(TAG, "GATTS registration started.");
@@ -583,10 +596,12 @@ void BLEMiRemote::gatts_event_(esp_gatts_cb_event_t event,
         case ESP_GATTS_REG_EVT:
             if (param->reg.status != ESP_GATT_OK) {
                 ESP_LOGE(TAG, "GATTS reg failed: %d", param->reg.status);
+                app_register_pending_ = false;
                 state_ = State::IDLE;
                 break;
             }
             gatts_if_ = gatts_if;
+            app_register_pending_ = false;
             ESP_LOGI(TAG, "GATTS app registered (gatts_if=%d).", gatts_if_);
 
             // Security parameters: JustWorks bonding, no MITM
