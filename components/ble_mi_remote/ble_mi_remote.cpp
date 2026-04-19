@@ -604,9 +604,11 @@ void BLEMiRemote::gatts_event_(esp_gatts_cb_event_t event,
             app_register_pending_ = false;
             ESP_LOGI(TAG, "GATTS app registered (gatts_if=%d).", gatts_if_);
 
-            // Security parameters: JustWorks bonding, no MITM
+            // Security parameters: LE Secure Connections + bonding, no MITM
+            // (io_cap=NONE forces JustWorks pairing, but the key exchange
+            // still uses ECDH as required by modern HID hosts.)
             {
-                esp_ble_auth_req_t auth = ESP_LE_AUTH_BOND;
+                esp_ble_auth_req_t auth = ESP_LE_AUTH_REQ_SC_BOND;
                 esp_ble_io_cap_t   iocap = ESP_IO_CAP_NONE;
                 uint8_t key_size = 16;
                 uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
