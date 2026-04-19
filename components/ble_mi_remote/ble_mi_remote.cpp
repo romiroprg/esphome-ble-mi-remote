@@ -227,7 +227,7 @@ static esp_gatts_attr_db_t HID_ATTR_DB[IDX_HID_MAX] = {
     },
     [IDX_HID_CHAR_INFO_VAL] = {
         {ESP_GATT_AUTO_RSP},
-        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_HIDINFO, ESP_GATT_PERM_READ,
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_HIDINFO, ESP_GATT_PERM_READ_ENCRYPTED,
          sizeof(HID_INFO_VAL), sizeof(HID_INFO_VAL), (uint8_t *)HID_INFO_VAL}
     },
     // Report Map
@@ -238,7 +238,7 @@ static esp_gatts_attr_db_t HID_ATTR_DB[IDX_HID_MAX] = {
     },
     [IDX_HID_CHAR_REPORT_MAP_VAL] = {
         {ESP_GATT_AUTO_RSP},
-        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_REPORTMAP, ESP_GATT_PERM_READ,
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_REPORTMAP, ESP_GATT_PERM_READ_ENCRYPTED,
          sizeof(HID_REPORT_MAP), sizeof(HID_REPORT_MAP), (uint8_t *)HID_REPORT_MAP}
     },
     // HID Control Point
@@ -249,7 +249,7 @@ static esp_gatts_attr_db_t HID_ATTR_DB[IDX_HID_MAX] = {
     },
     [IDX_HID_CHAR_CTRL_VAL] = {
         {ESP_GATT_AUTO_RSP},
-        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_HIDCTRL, ESP_GATT_PERM_WRITE,
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_HIDCTRL, ESP_GATT_PERM_WRITE_ENCRYPTED,
          sizeof(CTRL_POINT_VAL), sizeof(CTRL_POINT_VAL), CTRL_POINT_VAL}
     },
     // Protocol Mode
@@ -261,7 +261,7 @@ static esp_gatts_attr_db_t HID_ATTR_DB[IDX_HID_MAX] = {
     [IDX_HID_CHAR_PROTO_VAL] = {
         {ESP_GATT_AUTO_RSP},
         {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_PROTOMODE,
-         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+         ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED,
          sizeof(PROTO_MODE_VAL), sizeof(PROTO_MODE_VAL), PROTO_MODE_VAL}
     },
     // Consumer Control Report
@@ -273,18 +273,18 @@ static esp_gatts_attr_db_t HID_ATTR_DB[IDX_HID_MAX] = {
     [IDX_HID_CONSUMER_VAL] = {
         {ESP_GATT_AUTO_RSP},
         {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_REPORT,
-         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+         ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED,
          sizeof(consumer_report_buf), sizeof(consumer_report_buf), consumer_report_buf}
     },
     [IDX_HID_CONSUMER_REF] = {
         {ESP_GATT_AUTO_RSP},
-        {ESP_UUID_LEN_16, (uint8_t *)&UUID_REPORT_REF, ESP_GATT_PERM_READ,
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_REPORT_REF, ESP_GATT_PERM_READ_ENCRYPTED,
          sizeof(CONSUMER_REF), sizeof(CONSUMER_REF), (uint8_t *)CONSUMER_REF}
     },
     [IDX_HID_CONSUMER_CCCD] = {
         {ESP_GATT_AUTO_RSP},
         {ESP_UUID_LEN_16, (uint8_t *)&UUID_CCCD,
-         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+         ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED,
          sizeof(CCCD_INIT), sizeof(CCCD_INIT), CCCD_INIT}
     },
     // Keyboard Report
@@ -296,18 +296,18 @@ static esp_gatts_attr_db_t HID_ATTR_DB[IDX_HID_MAX] = {
     [IDX_HID_KB_VAL] = {
         {ESP_GATT_AUTO_RSP},
         {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_REPORT,
-         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+         ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED,
          sizeof(keyboard_report_buf), sizeof(keyboard_report_buf), keyboard_report_buf}
     },
     [IDX_HID_KB_REF] = {
         {ESP_GATT_AUTO_RSP},
-        {ESP_UUID_LEN_16, (uint8_t *)&UUID_REPORT_REF, ESP_GATT_PERM_READ,
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_REPORT_REF, ESP_GATT_PERM_READ_ENCRYPTED,
          sizeof(KB_REF), sizeof(KB_REF), (uint8_t *)KB_REF}
     },
     [IDX_HID_KB_CCCD] = {
         {ESP_GATT_AUTO_RSP},
         {ESP_UUID_LEN_16, (uint8_t *)&UUID_CCCD,
-         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+         ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED,
          sizeof(CCCD_INIT), sizeof(CCCD_INIT), CCCD_INIT}
     },
 };
