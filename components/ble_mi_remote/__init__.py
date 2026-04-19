@@ -1,279 +1,60 @@
-"""BleMiRemote component."""
-
-from __future__ import annotations
-
-from typing import Final
-
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome import automation
-from esphome.automation import maybe_simple_id
-from esphome.components import binary_sensor, button, number
-from esphome.components.esp32 import add_idf_sdkconfig_option
-from esphome.const import (
-    CONF_DEVICE_CLASS,
-    DEVICE_CLASS_CONNECTIVITY,
-    CONF_BATTERY_LEVEL,
-    CONF_CODE,
-    CONF_ID,
-    CONF_MANUFACTURER_ID,
-    CONF_NAME,
-    CONF_VALUE,
-    CONF_ICON,
-    CONF_DISABLED_BY_DEFAULT,
-    CONF_RESTORE_MODE    
-)
-from esphome.core import CORE, ID
-from esphome.cpp_generator import LambdaExpression, MockObj, TemplateArguments, TemplateArgsType
+from esphome.components import button
+from esphome.const import CONF_ID
 
-from .const import (
-    ACTION_COMBINATION_CLASS,
-    ACTION_PRESS_CLASS,
-    ACTION_PRINT_CLASS,
-    ACTION_RELEASE_CLASS,
-    ACTION_START_CLASS,
-    ACTION_STOP_CLASS,
-    SPECIAL_KEY,
-    COMPONENT_BUTTON_CLASS,
-    COMPONENT_CLASS,
-    CONF_RECONNECT,
-    CONF_TEXT,
-    DOMAIN,
-    LIBS_ADDITIONAL
-)
+DEPENDENCIES = ["esp32_ble"]
+AUTO_LOAD = ["button"]
 
-CODEOWNERS: Final = ["@shammysha"]
-AUTO_LOAD: Final = ["binary_sensor", "button"]
+ble_mi_remote_ns = cg.esphome_ns.namespace("ble_mi_remote")
+BLEMiRemote = ble_mi_remote_ns.class_("BLEMiRemote", cg.Component)
+MiRemoteButton = ble_mi_remote_ns.class_("MiRemoteButton", button.Button)
 
-ble_mi_remote_ns = cg.esphome_ns.namespace(DOMAIN)
+CONF_MANUFACTURER_ID = "manufacturer_id"
+CONF_BATTERY_LEVEL = "battery_level"
+CONF_RECONNECT = "reconnect"
 
-BleMiRemote = ble_mi_remote_ns.class_(COMPONENT_CLASS, cg.PollingComponent)
-BleMiRemoteButton = ble_mi_remote_ns.class_(COMPONENT_BUTTON_CLASS, cg.Component)
+# btn_name → (setter, type_index)
+BUTTONS = {
+    "power":        ("set_power_button",        0),
+    "home":         ("set_home_button",         1),
+    "back":         ("set_back_button",         2),
+    "menu":         ("set_menu_button",         3),
+    "up":           ("set_up_button",           4),
+    "down":         ("set_down_button",         5),
+    "left":         ("set_left_button",         6),
+    "right":        ("set_right_button",        7),
+    "ok":           ("set_ok_button",           8),
+    "volume_up":    ("set_volume_up_button",    9),
+    "volume_down":  ("set_volume_down_button",  10),
+    "mute":         ("set_mute_button",         11),
+    "play_pause":   ("set_play_pause_button",   12),
+    "fast_forward": ("set_fast_forward_button", 13),
+    "rewind":       ("set_rewind_button",       14),
+}
 
-CONFIG_SCHEMA: Final = cv.Schema(
+CONFIG_SCHEMA = cv.Schema(
     {
-        cv.GenerateID(): cv.declare_id(BleMiRemote),
-        cv.Optional(CONF_NAME, default=COMPONENT_CLASS): cv.Length(min=1),
-        cv.Optional(CONF_MANUFACTURER_ID, default=COMPONENT_CLASS): cv.Length(min=1),
+        cv.GenerateID(): cv.declare_id(BLEMiRemote),
+        cv.Optional("name", default="MI Remote"): cv.string,
+        cv.Optional(CONF_MANUFACTURER_ID, default="Xiaomi"): cv.string,
         cv.Optional(CONF_BATTERY_LEVEL, default=100): cv.int_range(min=0, max=100),
-        cv.Optional(CONF_RECONNECT, default=True): cv.boolean
+        cv.Optional(CONF_RECONNECT, default=True): cv.boolean,
+        **{cv.Optional(k): button.button_schema(MiRemoteButton) for k in BUTTONS},
     }
-)
+).extend(cv.COMPONENT_SCHEMA)
 
 
-async def to_code(config: dict) -> None:
-    """Generate component
-
-    :param config: dict
-    """
-
-    if not CORE.is_esp32:
-        raise cv.Invalid("The component only supports ESP32.")
-
-#    if not CORE.using_:
-#        raise cv.Invalid("The component only supports the Arduino framework.")
-
-    var = cg.new_Pvariable(
-        config[CONF_ID],
-        config[CONF_NAME],
-        config[CONF_MANUFACTURER_ID],
-        config[CONF_BATTERY_LEVEL],
-        config[CONF_RECONNECT]
-    )
-
+async def to_code(config):
+    var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
-    await adding_binary_sensors(var, config)
+    cg.add(var.set_device_name(config["name"]))
+    cg.add(var.set_manufacturer_name(config[CONF_MANUFACTURER_ID]))
+    cg.add(var.set_battery_level(config[CONF_BATTERY_LEVEL]))
+    cg.add(var.set_reconnect(config[CONF_RECONNECT]))
 
-    await adding_special_keys(var, config)
-
-    add_idf_sdkconfig_option("CONFIG_BT_ENABLED", True)
-    add_idf_sdkconfig_option("CONFIG_BT_NIMBLE_ENABLED", True)
-    add_idf_sdkconfig_option("CONFIG_NIMBLE_CPP_IDF", True)
-    
-    for lib in LIBS_ADDITIONAL:  # type: ignore
-        cg.add_library(*lib)
-
-
-async def adding_special_keys(var: MockObj, config: dict) -> None:
-    """Adding buttons
-
-    :param var: MockObj
-    """
-    
-    for key in SPECIAL_KEY:
-        new_key: MockObj = await button.new_button(
-            {
-                CONF_ID: cv.declare_id(BleMiRemoteButton)(key[CONF_ID]),
-                CONF_NAME: (config[CONF_NAME] or DOMAIN.replace("_", " ")) + " " + key[CONF_NAME],
-                CONF_ICON: key[CONF_ICON],
-                CONF_DISABLED_BY_DEFAULT: False
-            }        
-        )
-        cg.add(new_key.set_parent(var))
-
-        if CONF_VALUE not in key:
-            continue
-
-        cg.add(new_key.set_value(key[CONF_VALUE]))
-
-
-async def adding_binary_sensors(var: MockObj, config: dict) -> None:
-    """Adding binary sensor
-
-    :param var: MockObj
-    """
-
-    cg.add(
-        var.set_state_sensor(await binary_sensor.new_binary_sensor(
-            {
-                CONF_ID: cv.declare_id(binary_sensor.BinarySensor)("connected"),
-                CONF_NAME: (config[CONF_NAME] or DOMAIN.replace("_", " ")) + "-connected",
-                CONF_DEVICE_CLASS: DEVICE_CLASS_CONNECTIVITY,
-                CONF_DISABLED_BY_DEFAULT: False
-            }            
-        ))
-    )
-
-
-OPERATION_BASE_SCHEMA: Final = cv.Schema(
-    {
-        cv.Required(CONF_ID): cv.use_id(BleMiRemote),
-    }
-)
-
-BleMiRemoteReleaseAction = ble_mi_remote_ns.class_(
-    ACTION_RELEASE_CLASS, automation.Action
-)
-
-
-@automation.register_action(
-    f"{DOMAIN}.release",
-    BleMiRemoteReleaseAction,
-    maybe_simple_id(OPERATION_BASE_SCHEMA),
-    synchronous=True,
-)
-async def ble_mi_remote_release_to_code(
-    config: dict, action_id: ID, template_arg: TemplateArguments, args: TemplateArgsType
-) -> MockObj:
-    """Action release
-
-    :param config: dict
-    :param action_id: ID
-    :param template_arg: TemplateArguments
-    :param args: TemplateArgsType
-    :return: MockObj
-    """
-
-    paren: MockObj = await cg.get_variable(config[CONF_ID])
-
-    return cg.new_Pvariable(action_id, template_arg, paren)
-
-
-BleMiRemotePressAction = ble_mi_remote_ns.class_(ACTION_PRESS_CLASS, automation.Action)
-
-
-@automation.register_action(
-    f"{DOMAIN}.press",
-    BleMiRemotePressAction,
-    OPERATION_BASE_SCHEMA.extend(
-        {
-            cv.Required(CONF_CODE): cv.Any(
-                cv.templatable(cv.int_),
-                cv.templatable(cv.string)
-            )
-        }
-    ),
-    synchronous=True,
-)
-
-async def ble_mi_remote_press_to_code(
-    config: dict, action_id: ID, template_arg: TemplateArguments, args: TemplateArgsType
-) -> MockObj:
-    """Action press
-
-    :param config: dict
-    :param action_id: ID
-    :param template_arg: TemplateArguments
-    :param args: TemplateArgsType
-    :return: MockObj
-    """
-
-    paren: MockObj = await cg.get_variable(config[CONF_ID])
-    var: MockObj = cg.new_Pvariable(action_id, template_arg, paren)
-
-
-    template_ = await cg.templatable(config[CONF_CODE], args, cg.std_string)
-    
-    is_number = True;
-    
-    try:
-        config[CONF_CODE] = int(template_)
-    except:
-        try:
-            config[CONF_CODE] = int(template_, 16)
-        except:
-            is_number = False
-    
-    if is_number:
-        cg.add(var.set_key(config[CONF_CODE]))
-    else:
-        template_ = template_.lower()
-        for i, k in enumerate(SPECIAL_KEY):
-            if k[CONF_NAME].lower() == template_:
-                cg.add(var.set_special(k[CONF_VALUE]))
-                break
-    return var
-
-
-BleMiRemoteStartAction = ble_mi_remote_ns.class_(ACTION_START_CLASS, automation.Action)
-
-
-@automation.register_action(
-    f"{DOMAIN}.start",
-    BleMiRemoteStartAction,
-    maybe_simple_id(OPERATION_BASE_SCHEMA),
-    synchronous=True,    
-)
-async def ble_mi_remote_start_to_code(
-    config: dict, action_id: ID, template_arg: TemplateArguments, args: TemplateArgsType
-) -> MockObj:
-    """Action start
-
-    :param config: dict
-    :param action_id: ID
-    :param template_arg: TemplateArguments
-    :param args: TemplateArgsType
-    :return: MockObj
-    """
-
-    paren: MockObj = await cg.get_variable(config[CONF_ID])
-
-    return cg.new_Pvariable(action_id, template_arg, paren)
-
-
-BleMiRemoteStopAction = ble_mi_remote_ns.class_(ACTION_STOP_CLASS, automation.Action)
-
-
-@automation.register_action(
-    f"{DOMAIN}.stop",
-    BleMiRemoteStopAction,
-    maybe_simple_id(OPERATION_BASE_SCHEMA),
-    synchronous=True,    
-
-)
-async def ble_mi_remote_stop_to_code(
-    config: dict, action_id: ID, template_arg: TemplateArguments, args: TemplateArgsType
-) -> MockObj:
-    """Action stop
-
-    :param config: dict
-    :param action_id: ID
-    :param template_arg: TemplateArguments
-    :param args: TemplateArgsType
-    :return: MockObj
-    """
-
-    paren: MockObj = await cg.get_variable(config[CONF_ID])
-
-    return cg.new_Pvariable(action_id, template_arg, paren)
+    for btn_name, (setter, _type_idx) in BUTTONS.items():
+        if btn_name in config:
+            btn = await button.new_button(config[btn_name])
+            cg.add(getattr(var, setter)(btn))

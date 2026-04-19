@@ -1,529 +1,716 @@
-
 #ifdef USE_ESP32
 
 #include "ble_mi_remote.h"
-#include <NimBLEServer.h>
-#include <NimBLEDevice.h>
-#include <NimBLEService.h>
-#include <NimBLEUtils.h>
-#include <NimBLEHIDDevice.h>
-#include <NimBLECharacteristic.h>
-#include <NimBLEAdvertising.h>
-#include "HIDTypes.h"
-#include "HIDKeyboardTypes.h"
-// #include <driver/adc.h>
-#include "sdkconfig.h"
-#include <string>
-#include <list>
 #include "esphome/core/log.h"
+#include "esphome/core/application.h"
 
-#define CONSUMER_ID 0x01
-#define KEYBOARD_ID 0x02
-
-static const uint8_t _hidReportDescriptor[] = {
-    USAGE_PAGE(1),      0x0C,     // Consumer
-    USAGE(1),       0x01,     // Consumer Control
-
-    COLLECTION(1),      0x01,     // Application
-
-    REPORT_ID(1),     CONSUMER_ID,  //
-    LOGICAL_MINIMUM(1),   0x00,     //
-    LOGICAL_MAXIMUM(1),   0x01,     //
-    REPORT_SIZE(1),     0x01,     //
-    REPORT_COUNT(1),    0x18,     // 24
-    USAGE(1),       0x41,     // Menu Pick
-    USAGE(1),       0x42,     // Menu Up
-    USAGE(1),       0x43,     // Menu Down
-    USAGE(1),       0x44,     // Menu Left
-    USAGE(1),       0x45,     // Menu Right
-    USAGE(1),       0x30,     // Power
-    USAGE(1),       0xCF,     // Voice Command
-    USAGE(1),       0xE9,     // Volume Increment
-    USAGE(1),       0xEA,     // Volume Decrement
-    USAGE(2),       0xA2, 0x01,   // Instance 41473 (Select Task/Application)
-    USAGE(2),       0xB8, 0x01,   // Instance 47105 (Movie Browser)
-    USAGE(1),       0x6A,     // Green Menu Button
-    USAGE(1),       0x6B,     // Blue Menu Button
-    USAGE(1),       0x6C,     // Yellow Menu Button
-    USAGE(2),       0x8A, 0x01,   // Instance 35329 (Email reader??)
-    USAGE(2),       0x92, 0x01,   // Instance 37377 (Calculator)
-    USAGE(2),       0x94, 0x01,   // Instance 37889 (Local Machine Browser)
-    USAGE(1),       0x40,        // Menu
-    USAGE(2),       0x23, 0x02,   // Instance 8962 (Home)
-    USAGE(2),       0x24, 0x02,   // Instance 9218 (Back)
-    USAGE(2),       0x25, 0x02,   // Instance 9474 (Forward)
-    USAGE(2),       0x26, 0x02,   // Instance 9730 (Stop)
-    USAGE(2),       0x27, 0x02,   // Instance 9986 (Refresh)
-    USAGE(2),       0x2A, 0x02,   // Instance 10754 (Bookmarks)
-    HIDINPUT(1),      0x02,     // In bytes
-
-    USAGE_PAGE(2),      0x00, 0xFF,   // Vendor ??? переставить местами байты?
-    USAGE(1),       0x00,     // Vendor
-
-    COLLECTION(1),      0x01,     // Application
-
-    REPORT_ID(1),     0x06,     //
-    REPORT_SIZE(1),     0x08,     //
-    REPORT_COUNT(1),    0x78,     // 120
-    LOGICAL_MINIMUM(1),   0x00,     //
-    LOGICAL_MAXIMUM(1),   0xFF,     // -1
-    USAGE_MINIMUM(1),   0x00,     //
-    USAGE_MAXIMUM(1),   0xFF,     //
-    HIDINPUT(1),      0x00,     //
-
-    REPORT_ID(1),     0x07,     //
-    REPORT_SIZE(1),     0x08,     //
-    REPORT_COUNT(1),    0x78,     // 120
-    LOGICAL_MINIMUM(1),   0x00,     //
-    LOGICAL_MAXIMUM(1),   0xFF,     // -1
-    USAGE_MINIMUM(1),   0x00,     //
-    USAGE_MAXIMUM(1),   0xFF,     //
-    HIDINPUT(1),      0x00,     //
-
-    REPORT_ID(1),     0x08,     //
-    REPORT_SIZE(1),     0x08,     //
-    REPORT_COUNT(1),    0x78,     // 120
-    LOGICAL_MINIMUM(1),   0x00,     //
-    LOGICAL_MAXIMUM(1),   0xFF,     // 255
-    USAGE_MINIMUM(1),   0x00,     //
-    USAGE_MAXIMUM(1),   0xFF,     //
-    HIDINPUT(1),      0x00,     //
-
-    END_COLLECTION(0),
-
-    USAGE_PAGE(1),      0x01,     // Generic Desktop Controls
-    USAGE(1),       0x06,     // Keyboard
-
-    COLLECTION(1),      0x01,     // Application
-
-    REPORT_ID(1),     KEYBOARD_ID,  //
-    USAGE_PAGE(1),      0x07,     // Keyboard/Keypad
-    USAGE_MINIMUM(1),   0xE0,     // Ctrl, Shift, Alt, GUI
-    USAGE_MAXIMUM(1),   0xE7,     // Ctrl, Shift, Alt, GUI
-    LOGICAL_MINIMUM(1),   0x00,     //
-    LOGICAL_MAXIMUM(1),   0x01,     //
-    REPORT_SIZE(1),     0x01,     //
-    REPORT_COUNT(1),    0x08,     //
-    HIDINPUT(1),      0x02,     //
-    REPORT_COUNT(1),    0x01,     //
-    REPORT_SIZE(1),     0x08,     //
-    HIDINPUT(1),      0x01,     //
-
-    REPORT_COUNT(1),    0x05,     //
-    REPORT_SIZE(1),     0x01,     //
-    USAGE_PAGE(1),      0x08,     // LED
-    USAGE_MINIMUM(1),   0x01,     //
-    USAGE_MAXIMUM(1),   0x05,     //
-    HIDOUTPUT(1),     0x02,     //
-    REPORT_COUNT(1),    0x01,     //
-    REPORT_SIZE(1),     0x03,     //
-    HIDOUTPUT(1),     0x01,     //
-
-    REPORT_COUNT(1),    0x06,     //
-    REPORT_SIZE(1),     0x08,     //
-    LOGICAL_MINIMUM(1),   0x28,     // 40
-    LOGICAL_MAXIMUM(1),   0xFE,     // 254
-    USAGE_PAGE(1),      0x07,     // Keyboard/Keypad
-    USAGE_MINIMUM(1),   0x28,     // 40
-    USAGE_MAXIMUM(1),   0xFE,     // 254
-    HIDINPUT(1),      0x00,     //
-
-    END_COLLECTION(0),
-    END_COLLECTION(0)
-};
+#include <cstring>
 
 namespace esphome {
-  namespace ble_mi_remote {
-    static const char *const TAG = "ble_mi_remote";
+namespace ble_mi_remote {
 
-    BleMiRemote::BleMiRemote(std::string name, std::string manufacturer_id, uint8_t battery_level, bool reconnect)
-      :
-        PollingComponent(1000),
-        hid(0),
-        deviceName(std::string(name).substr(0, 15)),
-          deviceManufacturer(std::string(manufacturer_id).substr(0,15)),
-          batteryLevel(battery_level)
-    {
-      _reconnect = reconnect;
+static const char *const TAG = "ble_mi_remote";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HID Report Descriptor
+// Report ID 1: Consumer Control (media keys, home, back, power …)
+// Report ID 2: Keyboard        (arrow keys, enter)
+// ─────────────────────────────────────────────────────────────────────────────
+static const uint8_t HID_REPORT_MAP[] = {
+    // ── Consumer Control (Report ID 1) ──────────────────────────────────────
+    0x05, 0x0C,        // Usage Page (Consumer Devices)
+    0x09, 0x01,        // Usage (Consumer Control)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, 0x01,        //   Report ID (1)
+    0x75, 0x10,        //   Report Size (16 bits)
+    0x95, 0x01,        //   Report Count (1)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x26, 0xFF, 0x03,  //   Logical Maximum (1023)
+    0x19, 0x00,        //   Usage Minimum (0)
+    0x2A, 0xFF, 0x03,  //   Usage Maximum (1023)
+    0x81, 0x00,        //   Input (Data, Array, Absolute)
+    0xC0,              // End Collection
+
+    // ── Keyboard (Report ID 2) ───────────────────────────────────────────────
+    0x05, 0x01,        // Usage Page (Generic Desktop)
+    0x09, 0x06,        // Usage (Keyboard)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, 0x02,        //   Report ID (2)
+    // Modifier byte
+    0x05, 0x07,        //   Usage Page (Keyboard/Keypad)
+    0x19, 0xE0,        //   Usage Minimum (Left Control)
+    0x29, 0xE7,        //   Usage Maximum (Right GUI)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0x01,        //   Logical Maximum (1)
+    0x75, 0x01,        //   Report Size (1)
+    0x95, 0x08,        //   Report Count (8)
+    0x81, 0x02,        //   Input (Data, Variable, Absolute)
+    // Reserved byte
+    0x75, 0x08,        //   Report Size (8)
+    0x95, 0x01,        //   Report Count (1)
+    0x81, 0x01,        //   Input (Constant)
+    // Keycodes (6 bytes)
+    0x75, 0x08,        //   Report Size (8)
+    0x95, 0x06,        //   Report Count (6)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0x65,        //   Logical Maximum (101)
+    0x05, 0x07,        //   Usage Page (Keyboard/Keypad)
+    0x19, 0x00,        //   Usage Minimum (Reserved)
+    0x29, 0x65,        //   Usage Maximum (Keyboard Application)
+    0x81, 0x00,        //   Input (Data, Array, Absolute)
+    0xC0,              // End Collection
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Consumer Control keycodes (HID Usage Page 0x0C)
+// ─────────────────────────────────────────────────────────────────────────────
+static const uint16_t CONSUMER_KEY[BTN_COUNT] = {
+    /* POWER        */ 0x0030,
+    /* HOME         */ 0x0223,
+    /* BACK         */ 0x0224,
+    /* MENU         */ 0x0040,
+    /* UP           */ 0x0000,  // keyboard
+    /* DOWN         */ 0x0000,
+    /* LEFT         */ 0x0000,
+    /* RIGHT        */ 0x0000,
+    /* OK           */ 0x0000,
+    /* VOLUME_UP    */ 0x00E9,
+    /* VOLUME_DOWN  */ 0x00EA,
+    /* MUTE         */ 0x00E2,
+    /* PLAY_PAUSE   */ 0x00CD,
+    /* FAST_FORWARD */ 0x00B3,
+    /* REWIND       */ 0x00B4,
+};
+
+// Keyboard HID keycodes (USB HID Usage Page 0x07)
+static const uint8_t KEYBOARD_KEY[BTN_COUNT] = {
+    /* POWER        */ 0x00,
+    /* HOME         */ 0x00,
+    /* BACK         */ 0x00,
+    /* MENU         */ 0x00,
+    /* UP           */ 0x52,  // Right Arrow
+    /* DOWN         */ 0x51,
+    /* LEFT         */ 0x50,
+    /* RIGHT        */ 0x4F,
+    /* OK           */ 0x28,  // Enter
+    /* VOLUME_UP    */ 0x00,
+    /* VOLUME_DOWN  */ 0x00,
+    /* MUTE         */ 0x00,
+    /* PLAY_PAUSE   */ 0x00,
+    /* FAST_FORWARD */ 0x00,
+    /* REWIND       */ 0x00,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Static characteristic values
+// ─────────────────────────────────────────────────────────────────────────────
+// HID Information: bcdHID=1.11, bCountryCode=0, Flags=normallyConnectable
+static const uint8_t HID_INFO_VAL[]    = {0x11, 0x01, 0x00, 0x02};
+static uint8_t       PROTO_MODE_VAL[]  = {0x01};   // Report protocol
+static uint8_t       CTRL_POINT_VAL[]  = {0x00};
+// PnP ID: VendorSrc=Bluetooth SIG, VID=0x2717 (Xiaomi), PID=0x32B1, Ver=0x0001
+static const uint8_t PNP_ID_VAL[]     = {0x01, 0x17, 0x27, 0xB1, 0x32, 0x01, 0x00};
+// Report Reference descriptors: {report_id, report_type=Input(1)}
+static const uint8_t CONSUMER_REF[]   = {REPORT_ID_CONSUMER, 0x01};
+static const uint8_t KB_REF[]         = {REPORT_ID_KEYBOARD, 0x01};
+// CCCD init (notifications disabled)
+static uint8_t CCCD_INIT[]            = {0x00, 0x00};
+// Report value buffers (mutable, sent via notify)
+static uint8_t consumer_report_buf[2] = {0x00, 0x00};
+static uint8_t keyboard_report_buf[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+static uint8_t battery_level_buf[1]   = {100};
+
+// Dynamic: manufacturer name string (filled in setup())
+static char mfname_buf[64] = "Xiaomi";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UUID helpers
+// ─────────────────────────────────────────────────────────────────────────────
+static const uint16_t UUID_PRIMARY_SVC    = ESP_GATT_UUID_PRI_SERVICE;
+static const uint16_t UUID_CHAR_DECL      = ESP_GATT_UUID_CHAR_DECLARE;
+static const uint16_t UUID_CCCD           = ESP_GATT_UUID_CHAR_CLIENT_CONFIG;
+static const uint16_t UUID_REPORT_REF     = 0x2908;
+static const uint16_t UUID_SVC_DIS        = 0x180A;
+static const uint16_t UUID_SVC_BAS        = 0x180F;
+static const uint16_t UUID_SVC_HID        = 0x1812;
+static const uint16_t UUID_CHAR_MFNAME    = 0x2A29;
+static const uint16_t UUID_CHAR_PNP       = 0x2A50;
+static const uint16_t UUID_CHAR_BATLEVEL  = 0x2A19;
+static const uint16_t UUID_CHAR_HIDINFO   = 0x2A4A;
+static const uint16_t UUID_CHAR_REPORTMAP = 0x2A4B;
+static const uint16_t UUID_CHAR_HIDCTRL   = 0x2A4C;
+static const uint16_t UUID_CHAR_PROTOMODE = 0x2A4E;
+static const uint16_t UUID_CHAR_REPORT    = 0x2A4D;
+
+static const uint8_t PROP_R  = ESP_GATT_CHAR_PROP_BIT_READ;
+static const uint8_t PROP_RN = ESP_GATT_CHAR_PROP_BIT_READ  | ESP_GATT_CHAR_PROP_BIT_NOTIFY;
+static const uint8_t PROP_RW = ESP_GATT_CHAR_PROP_BIT_READ  | ESP_GATT_CHAR_PROP_BIT_WRITE;
+static const uint8_t PROP_W  = ESP_GATT_CHAR_PROP_BIT_WRITE_NR;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Device Information Service attribute table
+// ─────────────────────────────────────────────────────────────────────────────
+static esp_gatts_attr_db_t DIS_ATTR_DB[IDX_DIS_MAX] = {
+    // Service declaration
+    [IDX_DIS_SVC] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_PRIMARY_SVC, ESP_GATT_PERM_READ,
+         sizeof(uint16_t), sizeof(UUID_SVC_DIS), (uint8_t *)&UUID_SVC_DIS}
+    },
+    // Manufacturer Name: declaration
+    [IDX_DIS_CHAR_MFNAME_DECL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_DECL, ESP_GATT_PERM_READ,
+         sizeof(uint8_t), sizeof(PROP_R), (uint8_t *)&PROP_R}
+    },
+    // Manufacturer Name: value  (pointer set to mfname_buf at runtime)
+    [IDX_DIS_CHAR_MFNAME_VAL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_MFNAME, ESP_GATT_PERM_READ,
+         sizeof(mfname_buf), 0, (uint8_t *)mfname_buf}
+    },
+    // PnP ID: declaration
+    [IDX_DIS_CHAR_PNP_DECL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_DECL, ESP_GATT_PERM_READ,
+         sizeof(uint8_t), sizeof(PROP_R), (uint8_t *)&PROP_R}
+    },
+    // PnP ID: value
+    [IDX_DIS_CHAR_PNP_VAL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_PNP, ESP_GATT_PERM_READ,
+         sizeof(PNP_ID_VAL), sizeof(PNP_ID_VAL), (uint8_t *)PNP_ID_VAL}
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Battery Service attribute table
+// ─────────────────────────────────────────────────────────────────────────────
+static esp_gatts_attr_db_t BAS_ATTR_DB[IDX_BAS_MAX] = {
+    [IDX_BAS_SVC] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_PRIMARY_SVC, ESP_GATT_PERM_READ,
+         sizeof(uint16_t), sizeof(UUID_SVC_BAS), (uint8_t *)&UUID_SVC_BAS}
+    },
+    [IDX_BAS_CHAR_LEVEL_DECL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_DECL, ESP_GATT_PERM_READ,
+         sizeof(uint8_t), sizeof(PROP_RN), (uint8_t *)&PROP_RN}
+    },
+    [IDX_BAS_CHAR_LEVEL_VAL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_BATLEVEL, ESP_GATT_PERM_READ,
+         sizeof(battery_level_buf), sizeof(battery_level_buf), battery_level_buf}
+    },
+    [IDX_BAS_CHAR_LEVEL_CCCD] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CCCD,
+         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+         sizeof(CCCD_INIT), sizeof(CCCD_INIT), CCCD_INIT}
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HID Service attribute table
+// ─────────────────────────────────────────────────────────────────────────────
+static esp_gatts_attr_db_t HID_ATTR_DB[IDX_HID_MAX] = {
+    [IDX_HID_SVC] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_PRIMARY_SVC, ESP_GATT_PERM_READ,
+         sizeof(uint16_t), sizeof(UUID_SVC_HID), (uint8_t *)&UUID_SVC_HID}
+    },
+    // HID Information
+    [IDX_HID_CHAR_INFO_DECL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_DECL, ESP_GATT_PERM_READ,
+         sizeof(uint8_t), sizeof(PROP_R), (uint8_t *)&PROP_R}
+    },
+    [IDX_HID_CHAR_INFO_VAL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_HIDINFO, ESP_GATT_PERM_READ,
+         sizeof(HID_INFO_VAL), sizeof(HID_INFO_VAL), (uint8_t *)HID_INFO_VAL}
+    },
+    // Report Map
+    [IDX_HID_CHAR_REPORT_MAP_DECL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_DECL, ESP_GATT_PERM_READ,
+         sizeof(uint8_t), sizeof(PROP_R), (uint8_t *)&PROP_R}
+    },
+    [IDX_HID_CHAR_REPORT_MAP_VAL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_REPORTMAP, ESP_GATT_PERM_READ,
+         sizeof(HID_REPORT_MAP), sizeof(HID_REPORT_MAP), (uint8_t *)HID_REPORT_MAP}
+    },
+    // HID Control Point
+    [IDX_HID_CHAR_CTRL_DECL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_DECL, ESP_GATT_PERM_READ,
+         sizeof(uint8_t), sizeof(PROP_W), (uint8_t *)&PROP_W}
+    },
+    [IDX_HID_CHAR_CTRL_VAL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_HIDCTRL, ESP_GATT_PERM_WRITE,
+         sizeof(CTRL_POINT_VAL), sizeof(CTRL_POINT_VAL), CTRL_POINT_VAL}
+    },
+    // Protocol Mode
+    [IDX_HID_CHAR_PROTO_DECL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_DECL, ESP_GATT_PERM_READ,
+         sizeof(uint8_t), sizeof(PROP_RW), (uint8_t *)&PROP_RW}
+    },
+    [IDX_HID_CHAR_PROTO_VAL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_PROTOMODE,
+         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+         sizeof(PROTO_MODE_VAL), sizeof(PROTO_MODE_VAL), PROTO_MODE_VAL}
+    },
+    // Consumer Control Report
+    [IDX_HID_CONSUMER_DECL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_DECL, ESP_GATT_PERM_READ,
+         sizeof(uint8_t), sizeof(PROP_RN), (uint8_t *)&PROP_RN}
+    },
+    [IDX_HID_CONSUMER_VAL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_REPORT,
+         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+         sizeof(consumer_report_buf), sizeof(consumer_report_buf), consumer_report_buf}
+    },
+    [IDX_HID_CONSUMER_REF] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_REPORT_REF, ESP_GATT_PERM_READ,
+         sizeof(CONSUMER_REF), sizeof(CONSUMER_REF), (uint8_t *)CONSUMER_REF}
+    },
+    [IDX_HID_CONSUMER_CCCD] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CCCD,
+         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+         sizeof(CCCD_INIT), sizeof(CCCD_INIT), CCCD_INIT}
+    },
+    // Keyboard Report
+    [IDX_HID_KB_DECL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_DECL, ESP_GATT_PERM_READ,
+         sizeof(uint8_t), sizeof(PROP_RN), (uint8_t *)&PROP_RN}
+    },
+    [IDX_HID_KB_VAL] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CHAR_REPORT,
+         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+         sizeof(keyboard_report_buf), sizeof(keyboard_report_buf), keyboard_report_buf}
+    },
+    [IDX_HID_KB_REF] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_REPORT_REF, ESP_GATT_PERM_READ,
+         sizeof(KB_REF), sizeof(KB_REF), (uint8_t *)KB_REF}
+    },
+    [IDX_HID_KB_CCCD] = {
+        {ESP_GATT_AUTO_RSP},
+        {ESP_UUID_LEN_16, (uint8_t *)&UUID_CCCD,
+         ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+         sizeof(CCCD_INIT), sizeof(CCCD_INIT), CCCD_INIT}
+    },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Advertising data
+// ─────────────────────────────────────────────────────────────────────────────
+static uint16_t adv_svc_uuid = 0x1812;  // HID Service
+
+static esp_ble_adv_data_t adv_data = {
+    .set_scan_rsp        = false,
+    .include_name        = true,
+    .include_txpower     = false,
+    .min_interval        = 0x0006,  // 7.5 ms
+    .max_interval        = 0x0010,  // 20 ms
+    .appearance          = 0x0180,  // Generic Remote Control
+    .manufacturer_len    = 0,
+    .p_manufacturer_data = nullptr,
+    .service_data_len    = 0,
+    .p_service_data      = nullptr,
+    .service_uuid_len    = sizeof(adv_svc_uuid),
+    .p_service_uuid      = (uint8_t *)&adv_svc_uuid,
+    .flag                = ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT,
+};
+
+static esp_ble_adv_params_t adv_params = {
+    .adv_int_min       = 0x0020,  // 20 ms
+    .adv_int_max       = 0x0040,  // 40 ms
+    .adv_type          = ADV_TYPE_IND,
+    .own_addr_type     = BLE_ADDR_TYPE_PUBLIC,
+    .peer_addr         = {},
+    .peer_addr_type    = BLE_ADDR_TYPE_PUBLIC,
+    .channel_map       = ADV_CHNL_ALL,
+    .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Singleton
+// ─────────────────────────────────────────────────────────────────────────────
+BLEMiRemote *BLEMiRemote::global_instance = nullptr;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MiRemoteButton
+// ─────────────────────────────────────────────────────────────────────────────
+void MiRemoteButton::press_action() {
+    if (parent_ != nullptr) {
+        parent_->handle_button_press(type_);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BLEMiRemote – setup / loop / dump_config
+// ─────────────────────────────────────────────────────────────────────────────
+void BLEMiRemote::setup() {
+    global_instance = this;
+
+    // Copy config into static buffers used by attr tables
+    battery_level_buf[0] = battery_level_;
+    strncpy(mfname_buf, manufacturer_name_.c_str(), sizeof(mfname_buf) - 1);
+    mfname_buf[sizeof(mfname_buf) - 1] = '\0';
+    DIS_ATTR_DB[IDX_DIS_CHAR_MFNAME_VAL].att_desc.length = strlen(mfname_buf);
+    DIS_ATTR_DB[IDX_DIS_CHAR_MFNAME_VAL].att_desc.max_length = strlen(mfname_buf);
+
+    // Set BLE device name
+    esp_ble_gap_set_device_name(device_name_.c_str());
+
+    // Register as GAP event listener via ESPHome dispatcher
+    esp32_ble::global_esp32_ble->add_gap_event_handler(this);
+
+    ESP_LOGI(TAG, "Setup done. GATTS init will follow in loop().");
+}
+
+void BLEMiRemote::loop() {
+    // ── Release scheduled key ─────────────────────────────────────────────
+    if (pending_release_ && millis() >= release_at_) {
+        pending_release_ = false;
+        release_keys_();
     }
 
-    void BleMiRemote::setup() {
-      ESP_LOGI(TAG, "Setting this up...");
+    // ── State machine ─────────────────────────────────────────────────────
+    if (state_ == State::IDLE) {
+        if (millis() - last_retry_ < 2000) return;
+        last_retry_ = millis();
 
-      NimBLEDevice::init(deviceName);
-      NimBLEServer* pServer = NimBLEDevice::createServer();
-
-      pServer->setCallbacks(this);
-          pServer->advertiseOnDisconnect(this->_reconnect);
-
-      hid = new NimBLEHIDDevice(pServer);
-      inputSpecialKeys = hid->getInputReport(CONSUMER_ID);
-      inputKeyboard = hid->getInputReport(KEYBOARD_ID);
-      outputKeyboard = hid->getOutputReport(KEYBOARD_ID);
-      outputKeyboard->setCallbacks(this);
-
-      vendorReport_06 = hid->getInputReport(0x06);
-      vendorReport_07 = hid->getInputReport(0x07);
-      vendorReport_08 = hid->getInputReport(0x08);
-
-      hid->setManufacturer(deviceManufacturer);
-      hid->setPnp(sid, vid, pid, version);
-      hid->setHidInfo(0x00, 0x00);
-
-      NimBLEDevice::setSecurityAuth(true, true, true);
-
-      hid->setReportMap((uint8_t*) _hidReportDescriptor, sizeof(_hidReportDescriptor));
-      pServer->start();
-
-      onStarted(pServer);
-
-      advertising = pServer->getAdvertising();
-      advertising->setAppearance(HID_KEYBOARD);
-      advertising->addServiceUUID(hid->getHidService()->getUUID());
-      advertising->enableScanResponse(false);
-
-      advertising->start();
-
-      hid->setBatteryLevel(batteryLevel);
-
-      ESP_LOGD(TAG, "Advertising started!");
-
-      release();
-    }
-
-    void BleMiRemote::stop() {
-      if (this->_reconnect) {
-        pServer->advertiseOnDisconnect(false);
-      }
-
-      std::vector<uint16_t> ids = pServer->getPeerDevices();
-
-      if (ids.size() > 0) {
-        for (uint16_t &id : ids) {
-          pServer->disconnect(id);
+        if (try_init_()) {
+            state_ = State::REGISTERING;
         }
-      } else {
-        pServer->stopAdvertising();
-      }
     }
+}
 
-    void BleMiRemote::start() {
-      if (this->_reconnect) {
-        pServer->advertiseOnDisconnect(true);
-      }
+void BLEMiRemote::dump_config() {
+    ESP_LOGCONFIG(TAG, "BLE MI Remote:");
+    ESP_LOGCONFIG(TAG, "  Name: %s", device_name_.c_str());
+    ESP_LOGCONFIG(TAG, "  Manufacturer: %s", manufacturer_name_.c_str());
+    ESP_LOGCONFIG(TAG, "  Battery Level: %d%%", battery_level_);
+    ESP_LOGCONFIG(TAG, "  Auto-reconnect: %s", reconnect_ ? "yes" : "no");
+}
 
-      pServer->startAdvertising();
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+void BLEMiRemote::register_button_(MiRemoteButton *b, uint8_t type) {
+    if (type < BTN_COUNT) {
+        buttons_[type] = b;
+        b->set_parent(this, type);
     }
+}
 
-    void BleMiRemote::update() { state_sensor_->publish_state(this->_connected); }
-
-    bool BleMiRemote::is_connected() {
-      if (!this->_connected) {
-        ESP_LOGI(TAG, "Disconnected");
-
+bool BLEMiRemote::try_init_() {
+    esp_err_t ret = esp_ble_gatts_register_callback(gatts_cb_static_);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "gatts_register_callback failed (%s), will retry", esp_err_to_name(ret));
         return false;
-      }
-
-      return true;
     }
 
-    void BleMiRemote::set_battery_level(uint8_t level) {
-      this->batteryLevel = level;
-      if (hid != 0)
-        this->hid->setBatteryLevel(this->batteryLevel);
+    ret = esp_ble_gatts_app_register(0x5A);  // arbitrary app_id
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "gatts_app_register failed (%s), will retry", esp_err_to_name(ret));
+        return false;
     }
 
-    void BleMiRemote::update_timer() {
-      this->cancel_timeout(TAG);
-      this->set_timeout(TAG, _release_delay, [this]() { this->release(); });
+    ESP_LOGI(TAG, "GATTS registration started.");
+    return true;
+}
+
+void BLEMiRemote::create_services_() {
+    services_created_ = 0;
+    esp_ble_gatts_create_attr_tab(DIS_ATTR_DB, gatts_if_, IDX_DIS_MAX, INST_DIS);
+    esp_ble_gatts_create_attr_tab(BAS_ATTR_DB, gatts_if_, IDX_BAS_MAX, INST_BAS);
+    esp_ble_gatts_create_attr_tab(HID_ATTR_DB, gatts_if_, IDX_HID_MAX, INST_HID);
+}
+
+void BLEMiRemote::configure_adv_() {
+    state_ = State::ADV_CONFIGURING;
+    esp_err_t ret = esp_ble_gap_config_adv_data(&adv_data);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "config_adv_data failed: %s", esp_err_to_name(ret));
+    }
+}
+
+void BLEMiRemote::start_advertising_() {
+    esp_err_t ret = esp_ble_gap_start_advertising(&adv_params);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "start_advertising failed: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "Advertising started.");
+        state_ = State::ADVERTISING;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Report sending
+// ─────────────────────────────────────────────────────────────────────────────
+void BLEMiRemote::send_consumer_report_(uint16_t key) {
+    consumer_report_buf[0] = key & 0xFF;
+    consumer_report_buf[1] = (key >> 8) & 0xFF;
+    if ((consumer_cccd_ & 0x0001) && conn_id_ != 0xFFFF) {
+        esp_ble_gatts_send_indicate(gatts_if_, conn_id_,
+                                    hid_handles_[IDX_HID_CONSUMER_VAL],
+                                    sizeof(consumer_report_buf),
+                                    consumer_report_buf, false);
+    }
+}
+
+void BLEMiRemote::send_keyboard_report_(uint8_t key) {
+    memset(keyboard_report_buf, 0, sizeof(keyboard_report_buf));
+    keyboard_report_buf[2] = key;  // [0]=modifiers, [1]=reserved, [2..7]=keys
+    if ((keyboard_cccd_ & 0x0001) && conn_id_ != 0xFFFF) {
+        esp_ble_gatts_send_indicate(gatts_if_, conn_id_,
+                                    hid_handles_[IDX_HID_KB_VAL],
+                                    sizeof(keyboard_report_buf),
+                                    keyboard_report_buf, false);
+    }
+}
+
+void BLEMiRemote::release_keys_() {
+    // Send zeroed consumer report
+    uint8_t zero_consumer[2] = {0, 0};
+    if ((consumer_cccd_ & 0x0001) && conn_id_ != 0xFFFF) {
+        esp_ble_gatts_send_indicate(gatts_if_, conn_id_,
+                                    hid_handles_[IDX_HID_CONSUMER_VAL],
+                                    sizeof(zero_consumer), zero_consumer, false);
+    }
+    // Send zeroed keyboard report
+    uint8_t zero_kb[8] = {0};
+    if ((keyboard_cccd_ & 0x0001) && conn_id_ != 0xFFFF) {
+        esp_ble_gatts_send_indicate(gatts_if_, conn_id_,
+                                    hid_handles_[IDX_HID_KB_VAL],
+                                    sizeof(zero_kb), zero_kb, false);
+    }
+}
+
+void BLEMiRemote::handle_button_press(uint8_t type) {
+    if (type >= BTN_COUNT) return;
+    if (state_ != State::CONNECTED) {
+        ESP_LOGW(TAG, "Button pressed but not connected.");
+        return;
     }
 
+    uint16_t ckey = CONSUMER_KEY[type];
+    uint8_t  kkey = KEYBOARD_KEY[type];
 
-    void BleMiRemote::sendReport(KeyReport *keys) {
-      ESP_LOGD(TAG, "sendReport FIRING...");
-      if (this->is_connected()) {
-        ESP_LOGD(TAG, "sendReport FIRED!!!");
-
-        this->inputKeyboard->setValue((uint8_t*) keys, sizeof(KeyReport));
-        if (!this->inputKeyboard->notify()) {
-          ESP_LOGE(TAG, "sendReport FAILED!!!");
-        }
-        this->delay_ms(_delay_ms);
-      }
+    if (ckey != 0) {
+        send_consumer_report_(ckey);
+    } else if (kkey != 0) {
+        send_keyboard_report_(kkey);
     }
 
-    void BleMiRemote::sendReport(SpecialKeyReport *keys) {
-      ESP_LOGD(TAG, "sendReport FIRING...");
-      if (this->is_connected()) {
-        ESP_LOGD(TAG, "sendReport FIRED!!!");
+    // Schedule key release in 50 ms
+    pending_release_ = true;
+    release_at_ = millis() + 50;
+}
 
-        this->inputSpecialKeys->setValue((uint8_t*) keys, sizeof(SpecialKeyReport));
-        if (!this->inputSpecialKeys->notify()) {
-          ESP_LOGE(TAG, "sendReport FAILED!!!");
-        }
-        this->delay_ms(_delay_ms);
-      }
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+// GAP event handler  (called by ESPHome's ESP32BLE dispatcher)
+// ─────────────────────────────────────────────────────────────────────────────
+void BLEMiRemote::gap_event_handler(esp_gap_ble_cb_event_t event,
+                                     esp_ble_gap_cb_param_t *param) {
+    switch (event) {
+        case ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT:
+            ESP_LOGD(TAG, "ADV data set, starting advertising.");
+            start_advertising_();
+            break;
 
-    extern
-    const uint8_t _asciimap[128] PROGMEM;
-
-    #define SHIFT 0x80
-    const uint8_t _asciimap[128] = {
-        0x00,             // NUL
-        0x00,             // SOH
-        0x00,             // STX
-        0x00,             // ETX
-        0x00,             // EOT
-        0x00,             // ENQ
-        0x00,             // ACK
-        0x00,             // BEL
-        0x2a,     // BS Backspace
-        0x2b,     // TAB  Tab
-        0x28,     // LF Enter
-        0x00,             // VT
-        0x00,             // FF
-        0x00,             // CR
-        0x00,             // SO
-        0x00,             // SI
-        0x00,             // DEL
-        0x00,             // DC1
-        0x00,             // DC2
-        0x00,             // DC3
-        0x00,             // DC4
-        0x00,             // NAK
-        0x00,             // SYN
-        0x00,             // ETB
-        0x00,             // CAN
-        0x00,             // EM
-        0x00,             // SUB
-        0x00,             // ESC
-        0x00,             // FS
-        0x00,             // GS
-        0x00,             // RS
-        0x00,             // US
-
-        0x2c,      //  ' '
-        0x1e | SHIFT,    // !
-        0x34 | SHIFT,    // "
-        0x20 | SHIFT,    // #
-        0x21 | SHIFT,    // $
-        0x22 | SHIFT,    // %
-        0x24 | SHIFT,    // &
-        0x34,          // '
-        0x26 | SHIFT,    // (
-        0x27 | SHIFT,    // )
-        0x25 | SHIFT,    // *
-        0x2e | SHIFT,    // +
-        0x36,          // ,
-        0x2d,          // -
-        0x37,          // .
-        0x38,          // /
-        0x27,          // 0
-        0x1e,          // 1
-        0x1f,          // 2
-        0x20,          // 3
-        0x21,          // 4
-        0x22,          // 5
-        0x23,          // 6
-        0x24,          // 7
-        0x25,          // 8
-        0x26,          // 9
-        0x33 | SHIFT,      // :
-        0x33,          // ;
-        0x36 | SHIFT,      // <
-        0x2e,          // =
-        0x37 | SHIFT,      // >
-        0x38 | SHIFT,      // ?
-        0x1f | SHIFT,      // @
-        0x04 | SHIFT,      // A
-        0x05 | SHIFT,      // B
-        0x06 | SHIFT,      // C
-        0x07 | SHIFT,      // D
-        0x08 | SHIFT,      // E
-        0x09 | SHIFT,      // F
-        0x0a | SHIFT,      // G
-        0x0b | SHIFT,      // H
-        0x0c | SHIFT,      // I
-        0x0d | SHIFT,      // J
-        0x0e | SHIFT,      // K
-        0x0f | SHIFT,      // L
-        0x10 | SHIFT,      // M
-        0x11 | SHIFT,      // N
-        0x12 | SHIFT,      // O
-        0x13 | SHIFT,      // P
-        0x14 | SHIFT,      // Q
-        0x15 | SHIFT,      // R
-        0x16 | SHIFT,      // S
-        0x17 | SHIFT,      // T
-        0x18 | SHIFT,      // U
-        0x19 | SHIFT,      // V
-        0x1a | SHIFT,      // W
-        0x1b | SHIFT,      // X
-        0x1c | SHIFT,      // Y
-        0x1d | SHIFT,      // Z
-        0x2f,          // [
-        0x31,          // bslash
-        0x30,          // ]
-        0x23 | SHIFT,    // ^
-        0x2d | SHIFT,    // _
-        0x35,          // `
-        0x04,          // a
-        0x05,          // b
-        0x06,          // c
-        0x07,          // d
-        0x08,          // e
-        0x09,          // f
-        0x0a,          // g
-        0x0b,          // h
-        0x0c,          // i
-        0x0d,          // j
-        0x0e,          // k
-        0x0f,          // l
-        0x10,          // m
-        0x11,          // n
-        0x12,          // o
-        0x13,          // p
-        0x14,          // q
-        0x15,          // r
-        0x16,          // s
-        0x17,          // t
-        0x18,          // u
-        0x19,          // v
-        0x1a,          // w
-        0x1b,          // x
-        0x1c,          // y
-        0x1d,          // z
-        0x2f | SHIFT,    // {
-        0x31 | SHIFT,    // |
-        0x30 | SHIFT,    // }
-        0x35 | SHIFT,    // ~
-        0       // DEL
-    };
-
-    uint8_t USBPutChar(uint8_t c);
-
-    void BleMiRemote::press(uint8_t k, bool with_timer) {
-      if (this->is_connected()) {
-        if (with_timer) {
-          this->update_timer();
-        }
-
-        uint8_t i;
-        if (k >= 136) {     // it's a non-printing key (not a modifier)
-          k = k - 136;
-        } else if (k >= 128) {  // it's a modifier key
-          _keyReport.modifiers |= (1 << (k - 128));
-          k = 0;
-        } else {        // it's a printing key
-          k = pgm_read_byte(_asciimap + k);
-          if (!k) {
-
-            return;
-          }
-          if (k & 0x80) {           // it's a capital letter or other character reached with shift
-            _keyReport.modifiers |= 0x02; // the left shift modifier
-            k &= 0x7F;
-          }
-        }
-
-        // Add k to the key report only if it's not already present
-        // and if there is an empty slot.
-        if (_keyReport.keys[0] != k && _keyReport.keys[1] != k && _keyReport.keys[2] != k && _keyReport.keys[3] != k && _keyReport.keys[4] != k && _keyReport.keys[5] != k) {
-
-          for (i = 0; i < 6; i++) {
-            if (_keyReport.keys[i] == 0x00) {
-              _keyReport.keys[i] = k;
-              break;
+        case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
+            if (param->adv_start_cmpl.status != ESP_BT_STATUS_SUCCESS) {
+                ESP_LOGE(TAG, "ADV start failed: %d", param->adv_start_cmpl.status);
             }
-          }
-          if (i == 6) {
-            return;
-          }
+            break;
+
+        case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
+            ESP_LOGD(TAG, "ADV stopped.");
+            break;
+
+        case ESP_GAP_BLE_SEC_REQ_EVT:
+            // Accept pairing request from remote device
+            esp_ble_gap_security_rsp(param->ble_security.ble_req.bd_addr, true);
+            break;
+
+        case ESP_GAP_BLE_AUTH_CMPL_EVT:
+            if (param->ble_security.auth_cmpl.success) {
+                ESP_LOGI(TAG, "Pairing successful.");
+            } else {
+                ESP_LOGW(TAG, "Pairing failed, reason: 0x%02X",
+                         param->ble_security.auth_cmpl.fail_reason);
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GATTS static trampoline
+// ─────────────────────────────────────────────────────────────────────────────
+void BLEMiRemote::gatts_cb_static_(esp_gatts_cb_event_t event,
+                                    esp_gatt_if_t gatts_if,
+                                    esp_ble_gatts_cb_param_t *param) {
+    if (global_instance != nullptr) {
+        global_instance->gatts_event_(event, gatts_if, param);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GATTS event handler
+// ─────────────────────────────────────────────────────────────────────────────
+void BLEMiRemote::gatts_event_(esp_gatts_cb_event_t event,
+                                esp_gatt_if_t gatts_if,
+                                esp_ble_gatts_cb_param_t *param) {
+    switch (event) {
+        // ── App registered ────────────────────────────────────────────────
+        case ESP_GATTS_REG_EVT:
+            if (param->reg.status != ESP_GATT_OK) {
+                ESP_LOGE(TAG, "GATTS reg failed: %d", param->reg.status);
+                state_ = State::IDLE;
+                break;
+            }
+            gatts_if_ = gatts_if;
+            ESP_LOGI(TAG, "GATTS app registered (gatts_if=%d).", gatts_if_);
+
+            // Security parameters: JustWorks bonding, no MITM
+            {
+                esp_ble_auth_req_t auth = ESP_LE_AUTH_BOND;
+                esp_ble_io_cap_t   iocap = ESP_IO_CAP_NONE;
+                uint8_t key_size = 16;
+                uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
+                uint8_t rsp_key  = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
+                esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth,     1);
+                esp_ble_gap_set_security_param(ESP_BLE_SM_IOCAP_MODE,      &iocap,    1);
+                esp_ble_gap_set_security_param(ESP_BLE_SM_MAX_KEY_SIZE,    &key_size, 1);
+                esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY,    &init_key, 1);
+                esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY,     &rsp_key,  1);
+            }
+
+            state_ = State::CREATING;
+            create_services_();
+            break;
+
+        // ── Attribute table created ───────────────────────────────────────
+        case ESP_GATTS_CREAT_ATTR_TAB_EVT: {
+            if (param->add_attr_tab.status != ESP_GATT_OK) {
+                ESP_LOGE(TAG, "create_attr_tab failed (inst=%d): %d",
+                         param->add_attr_tab.srvc_inst_id, param->add_attr_tab.status);
+                break;
+            }
+
+            uint8_t inst = param->add_attr_tab.srvc_inst_id;
+            uint16_t num = param->add_attr_tab.num_handle;
+
+            if (inst == INST_DIS && num >= IDX_DIS_MAX) {
+                memcpy(dis_handles_, param->add_attr_tab.handles,
+                       sizeof(uint16_t) * IDX_DIS_MAX);
+                esp_ble_gatts_start_service(dis_handles_[IDX_DIS_SVC]);
+                services_created_++;
+                ESP_LOGD(TAG, "DIS service started.");
+            } else if (inst == INST_BAS && num >= IDX_BAS_MAX) {
+                memcpy(bas_handles_, param->add_attr_tab.handles,
+                       sizeof(uint16_t) * IDX_BAS_MAX);
+                esp_ble_gatts_start_service(bas_handles_[IDX_BAS_SVC]);
+                services_created_++;
+                ESP_LOGD(TAG, "BAS service started.");
+            } else if (inst == INST_HID && num >= IDX_HID_MAX) {
+                memcpy(hid_handles_, param->add_attr_tab.handles,
+                       sizeof(uint16_t) * IDX_HID_MAX);
+                esp_ble_gatts_start_service(hid_handles_[IDX_HID_SVC]);
+                services_created_++;
+                ESP_LOGD(TAG, "HID service started.");
+            }
+
+            if (services_created_ == 3) {
+                ESP_LOGI(TAG, "All services created, configuring advertising.");
+                configure_adv_();
+            }
+            break;
         }
-        sendReport (&_keyReport);
-      }
+
+        // ── Client connected ──────────────────────────────────────────────
+        case ESP_GATTS_CONNECT_EVT:
+            conn_id_ = param->connect.conn_id;
+            memcpy(remote_bda_, param->connect.remote_bda, sizeof(esp_bd_addr_t));
+            state_ = State::CONNECTED;
+            consumer_cccd_ = 0;
+            keyboard_cccd_ = 0;
+            battery_cccd_  = 0;
+            ESP_LOGI(TAG, "Connected: %02X:%02X:%02X:%02X:%02X:%02X",
+                     remote_bda_[0], remote_bda_[1], remote_bda_[2],
+                     remote_bda_[3], remote_bda_[4], remote_bda_[5]);
+            // Request connection parameter update for lower latency
+            {
+                esp_ble_conn_update_params_t params = {
+                    .min_int = 0x10,
+                    .max_int = 0x20,
+                    .latency = 0,
+                    .timeout = 400,
+                };
+                memcpy(params.bda, remote_bda_, sizeof(esp_bd_addr_t));
+                esp_ble_gap_update_conn_params(&params);
+            }
+            break;
+
+        // ── Client disconnected ───────────────────────────────────────────
+        case ESP_GATTS_DISCONNECT_EVT:
+            conn_id_ = 0xFFFF;
+            state_   = State::ADVERTISING;
+            ESP_LOGI(TAG, "Disconnected (reason: 0x%02X).",
+                     param->disconnect.reason);
+            if (reconnect_) {
+                ESP_LOGI(TAG, "Restarting advertising.");
+                start_advertising_();
+            }
+            break;
+
+        // ── Write to CCCD (enable/disable notifications) ──────────────────
+        case ESP_GATTS_WRITE_EVT:
+            if (!param->write.is_prep && param->write.len == 2) {
+                uint16_t val = param->write.value[0] | (param->write.value[1] << 8);
+                uint16_t hdl = param->write.handle;
+
+                if (hdl == hid_handles_[IDX_HID_CONSUMER_CCCD]) {
+                    consumer_cccd_ = val;
+                    ESP_LOGD(TAG, "Consumer CCCD = 0x%04X", val);
+                } else if (hdl == hid_handles_[IDX_HID_KB_CCCD]) {
+                    keyboard_cccd_ = val;
+                    ESP_LOGD(TAG, "Keyboard CCCD = 0x%04X", val);
+                } else if (hdl == bas_handles_[IDX_BAS_CHAR_LEVEL_CCCD]) {
+                    battery_cccd_ = val;
+                    ESP_LOGD(TAG, "Battery CCCD = 0x%04X", val);
+                }
+            }
+            break;
+
+        // ── MTU negotiation ───────────────────────────────────────────────
+        case ESP_GATTS_MTU_EVT:
+            ESP_LOGD(TAG, "MTU set to %d", param->mtu.mtu);
+            break;
+
+        default:
+            break;
     }
+}
 
-    void BleMiRemote::pressSpecial(uint8_t k, bool with_timer) {
-      if (this->is_connected()) {
-        if (with_timer) {
-          this->update_timer();
-        }
-          uint8_t bit = k % 8;
-          uint8_t byte = int(k / 8);
-
-          _specialKeyReport.keys[byte] |= (1 << bit);
-
-          ESP_LOGD(TAG, "Send: %d, %d, %d", _specialKeyReport.keys[0], _specialKeyReport.keys[1], _specialKeyReport.keys[2]);
-
-          sendReport (&_specialKeyReport);
-      }
-    }
-
-    void BleMiRemote::release() {
-      if (this->is_connected()) {
-        this->cancel_timeout(TAG);
-
-        _keyReport.keys[0] = 0;
-        _keyReport.keys[1] = 0;
-        _keyReport.keys[2] = 0;
-        _keyReport.keys[3] = 0;
-        _keyReport.keys[4] = 0;
-        _keyReport.keys[5] = 0;
-        _keyReport.modifiers = 0;
-        _specialKeyReport.keys[0] = 0;
-        _specialKeyReport.keys[1] = 0;
-        _specialKeyReport.keys[2] = 0;
-        sendReport (&_keyReport);
-        sendReport (&_specialKeyReport);
-      }
-    }
-
-    void BleMiRemote::onConnect(NimBLEServer *pServer, NimBLEConnInfo& connInfo) {
-      this->_connected = true;
-      NimBLEConnInfo peer = connInfo;
-
-      release();
-    }
-
-    void BleMiRemote::onDisconnect(NimBLEServer *pServer, NimBLEConnInfo& connInfo, int reason) {
-      this->_connected = false;
-      if (this->_reconnect) {
-        pServer->startAdvertising();
-      }
-    }
-
-    void BleMiRemote::onWrite(NimBLECharacteristic *me, NimBLEConnInfo& connInfo) {
-      uint8_t *value = (uint8_t*) (me->getValue().c_str());
-      (void) value;
-      ESP_LOGD(TAG, "special keys: %d", *value);
-    }
-
-    void BleMiRemote::on_shutdown() {
-      ESP_LOGD(TAG, "on_shutdown FIRED!!!");
-      this->stop();
-    }
-
-    void BleMiRemote::on_safe_shutdown() {
-      ESP_LOGD(TAG, "on_safe_shutdown FIRED!!!");
-      this->stop();
-    }
-
-
-    void BleMiRemote::delay_ms(uint64_t ms) {
-      uint64_t m = esp_timer_get_time();
-      if (ms) {
-        uint64_t e = (m + (ms * 1000));
-        if (m > e) { //overflow
-          while (esp_timer_get_time() > e) {
-          }
-        }
-        while (esp_timer_get_time() < e) {
-        }
-      }
-    }
-  }  // namespace ble_mi_remote
+}  // namespace ble_mi_remote
 }  // namespace esphome
 
-#endif
+#endif  // USE_ESP32
