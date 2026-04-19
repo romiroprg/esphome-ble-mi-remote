@@ -407,6 +407,19 @@ void BLEMiRemote::dump_config() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+void BLEMiRemote::set_battery_level(uint8_t level) {
+    battery_level_ = level;
+    battery_level_buf[0] = level;
+    // If a client has subscribed to battery notifications, push the new value.
+    if ((battery_cccd_ & 0x0001) && conn_id_ != 0xFFFF &&
+        bas_handles_[IDX_BAS_CHAR_LEVEL_VAL] != 0) {
+        esp_ble_gatts_send_indicate(gatts_if_, conn_id_,
+                                    bas_handles_[IDX_BAS_CHAR_LEVEL_VAL],
+                                    sizeof(battery_level_buf),
+                                    battery_level_buf, false);
+    }
+}
+
 void BLEMiRemote::register_button_(MiRemoteButton *b, uint8_t type) {
     if (type < BTN_COUNT) {
         buttons_[type] = b;

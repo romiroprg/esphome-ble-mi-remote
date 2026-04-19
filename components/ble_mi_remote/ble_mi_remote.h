@@ -119,7 +119,7 @@ class BLEMiRemote : public Component, public esp32_ble::GAPEventHandler {
   // ── Configuration setters (called from codegen) ──────────────────────────
   void set_device_name(const std::string &name) { device_name_ = name; }
   void set_manufacturer_name(const std::string &name) { manufacturer_name_ = name; }
-  void set_battery_level(uint8_t level) { battery_level_ = level; }
+  void set_battery_level(uint8_t level);
   void set_reconnect(bool reconnect) { reconnect_ = reconnect; }
 
   void set_power_button(MiRemoteButton *b)        { register_button_(b, BTN_POWER); }
