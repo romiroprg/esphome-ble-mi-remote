@@ -1,6 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import button
+from esphome.components.esp32 import add_idf_sdkconfig_option
 from esphome.const import CONF_ID
 
 DEPENDENCIES = ["esp32_ble"]
@@ -58,3 +59,9 @@ async def to_code(config):
         if btn_name in config:
             btn = await button.new_button(config[btn_name])
             cg.add(getattr(var, setter)(btn))
+
+    # GATTS server and SMP are not enabled by default in ESPHome's esp32_ble
+    # sdkconfig (bluetooth_proxy only needs GATTC). Enable both so that
+    # esp_ble_gatts_* and bonding work.
+    add_idf_sdkconfig_option("CONFIG_BT_GATTS_ENABLE", True)
+    add_idf_sdkconfig_option("CONFIG_BT_SMP_ENABLE", True)
