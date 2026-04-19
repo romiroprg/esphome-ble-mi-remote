@@ -317,10 +317,13 @@ static esp_gatts_attr_db_t HID_ATTR_DB[IDX_HID_MAX] = {
 // ─────────────────────────────────────────────────────────────────────────────
 static uint16_t adv_svc_uuid = 0x1812;  // HID Service
 
+// Advertising data stays compact so it always fits in the 31-byte limit:
+// flags + appearance + preferred conn params + HID service UUID.
+// Device name lives in the scan response below.
 static esp_ble_adv_data_t adv_data = {
     .set_scan_rsp        = false,
-    .include_name        = true,
-    .include_txpower     = false,
+    .include_name        = false,
+    .include_txpower     = true,
     .min_interval        = 0x0006,  // 7.5 ms
     .max_interval        = 0x0010,  // 20 ms
     .appearance          = 0x0180,  // Generic Remote Control
@@ -331,6 +334,24 @@ static esp_ble_adv_data_t adv_data = {
     .service_uuid_len    = sizeof(adv_svc_uuid),
     .p_service_uuid      = (uint8_t *)&adv_svc_uuid,
     .flag                = ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT,
+};
+
+// Scan response: only the complete local name. This guarantees scanners
+// that send SCAN_REQ always get the name, regardless of how long it is.
+static esp_ble_adv_data_t scan_rsp_data = {
+    .set_scan_rsp        = true,
+    .include_name        = true,
+    .include_txpower     = false,
+    .min_interval        = 0,
+    .max_interval        = 0,
+    .appearance          = 0,
+    .manufacturer_len    = 0,
+    .p_manufacturer_data = nullptr,
+    .service_data_len    = 0,
+    .p_service_data      = nullptr,
+    .service_uuid_len    = 0,
+    .p_service_uuid      = nullptr,
+    .flag                = 0,
 };
 
 static esp_ble_adv_params_t adv_params = {
@@ -468,9 +489,16 @@ void BLEMiRemote::create_services_() {
 
 void BLEMiRemote::configure_adv_() {
     state_ = State::ADV_CONFIGURING;
+    adv_data_set_ = false;
+    scan_rsp_set_ = false;
+
     esp_err_t ret = esp_ble_gap_config_adv_data(&adv_data);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "config_adv_data failed: %s", esp_err_to_name(ret));
+    }
+    ret = esp_ble_gap_config_adv_data(&scan_rsp_data);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "config_scan_rsp_data failed: %s", esp_err_to_name(ret));
     }
 }
 
@@ -554,8 +582,15 @@ void BLEMiRemote::gap_event_handler(esp_gap_ble_cb_event_t event,
                                      esp_ble_gap_cb_param_t *param) {
     switch (event) {
         case ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT:
-            ESP_LOGD(TAG, "ADV data set, starting advertising.");
-            start_advertising_();
+            ESP_LOGD(TAG, "ADV data set.");
+            adv_data_set_ = true;
+            if (scan_rsp_set_) start_advertising_();
+            break;
+
+        case ESP_GAP_BLE_SCAN_RSP_DATA_SET_COMPLETE_EVT:
+            ESP_LOGD(TAG, "Scan response data set.");
+            scan_rsp_set_ = true;
+            if (adv_data_set_) start_advertising_();
             break;
 
         case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
